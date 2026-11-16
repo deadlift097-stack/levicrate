@@ -13,7 +13,7 @@ set(MOD_NAME "Levicrate Demo" CACHE STRING "Display name")
 set(MOD_AUTHOR "you" CACHE STRING "Author")
 set(MOD_VERSION "0.1.0" CACHE STRING "Version")
 set(MOD_LIBRARY_NAME "levicrate_demo" CACHE STRING "Library name without lib prefix / .so suffix")
-set(MOD_MINECRAFT_VERSIONS "[\"1.21.*\"]" CACHE STRING "Raw JSON array for minecraft_versions")
+set(MOD_MINECRAFT_VERSIONS "[\"1.21.62.*\"]" CACHE STRING "Raw JSON array for minecraft_versions")
 set(MOD_ICON "" CACHE STRING "Package-relative icon path (relative to the workspace)")
 set(CRATE_ASSETS_DIR "" CACHE PATH "Assets directory to include in the package")
 
