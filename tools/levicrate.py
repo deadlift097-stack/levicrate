@@ -7,13 +7,18 @@ Methods that touch Minecraft/Java objects cannot be mapped automatically; they b
 Commands:
   inspect <jar>                         show detected metadata + classes
   convert <jar> -o <dir> [--mc V ...]   create a buildable workspace (+ PORTING.md, src/ModPort.cpp)
+  build <jar> [-o <out.levipack>]       convert + compile (Android NDK) + package: Java mod -> .levipack in one step
   pack --workspace <dir> --so <lib.so>  create <id>-<version>-<abi>.levipack from a built library
 """
 import argparse
 import json
+import os
 import re
+import shutil
 import struct
+import subprocess
 import sys
+import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -23,7 +28,9 @@ import j2cpp  # noqa: E402
 
 MAX_FILE = 128 * 1024 * 1024
 MAX_TOTAL = 512 * 1024 * 1024
-DEFAULT_MC = ["1.21.*"]
+DEFAULT_MC = ["1.26.62.1"]
+ABI = "arm64-v8a"  # LeviLauncher is 64-bit ARM only; 32-bit ARM (armeabi-v7a) is not supported
+ROOT = Path(__file__).resolve().parent.parent
 
 
 class CrateError(Exception):
@@ -324,7 +331,7 @@ def build_manifest(ws: dict) -> dict:
             "minecraft_versions": ws.get("minecraft_versions", DEFAULT_MC)}
 
 
-def pack(workspace: Path, so: Path, abi="arm64-v8a", out=None) -> Path:
+def pack(workspace: Path, so: Path, abi=ABI, out=None) -> Path:
     ws = json.loads((workspace / "levicrate.json").read_text())
     if not so.is_file():
         raise CrateError(f"library not found: {so}")
@@ -349,16 +356,58 @@ def pack(workspace: Path, so: Path, abi="arm64-v8a", out=None) -> Path:
     return out
 
 
+
+# ----------------------------------------------------------------- build (jar -> levipack)
+def find_ndk(explicit=None):
+    cands = [explicit] + [os.environ.get(k) for k in ("ANDROID_NDK_HOME", "ANDROID_NDK_ROOT", "ANDROID_NDK")]
+    for c in cands:
+        if c and (Path(c) / "build/cmake/android.toolchain.cmake").is_file():
+            return Path(c)
+    return None
+
+
+def build(jar: Path, out=None, mc=None, author=None, ndk=None, workdir=None) -> Path:
+    """Java mod -> workspace -> native library -> .levipack. Needs the Android NDK (r28c recommended), cmake, ninja."""
+    ndk_path = find_ndk(ndk)
+    if ndk_path is None:
+        raise CrateError("Android NDK not found. Pass --ndk <path> or set ANDROID_NDK_HOME. No NDK locally? Push the jar to "
+                         "mods/ in your GitHub repo: the 'convert' workflow builds the .levipack for you (see README).")
+    for tool in ("cmake", "ninja"):
+        if not shutil.which(tool):
+            raise CrateError(f"{tool} not found on PATH")
+    work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="levicrate-"))
+    ws_dir, bld = work / "workspace", work / "build"
+    ws, _nc, _na, (t, u) = convert(jar, ws_dir, mc, author)
+    print(f"converted: {t} method(s) translated, {u} need manual work (see {ws_dir / 'PORTING.md'})")
+    cfg = ["cmake", "-S", str(ROOT), "-B", str(bld), "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
+           f"-DCMAKE_TOOLCHAIN_FILE={ndk_path / 'build/cmake/android.toolchain.cmake'}", f"-DANDROID_ABI={ABI}",
+           "-DANDROID_PLATFORM=android-28", "-DANDROID_STL=c++_shared", f"-DCRATE_WORKSPACE={ws_dir.resolve()}"]
+    for cmd in (cfg, ["cmake", "--build", str(bld), "--target", "levi_package"]):
+        if subprocess.run(cmd).returncode != 0:
+            raise CrateError("native build failed (see the compiler output above)")
+    built = sorted(bld.glob("*.levipack"))
+    if not built:
+        raise CrateError("build finished but produced no .levipack")
+    dest = Path(out) if out else Path.cwd() / built[0].name
+    shutil.copy2(built[0], dest)
+    shutil.copy2(ws_dir / "PORTING.md", dest.with_suffix(".PORTING.md"))
+    return dest
+
+
 # ----------------------------------------------------------------- cli
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="levicrate", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("inspect"); a.add_argument("jar", type=Path)
     c = sub.add_parser("convert"); c.add_argument("jar", type=Path); c.add_argument("-o", "--out", type=Path, required=True)
-    c.add_argument("--mc", action="append", help="Minecraft version pattern, repeatable (default 1.21.*)")
+    c.add_argument("--mc", action="append", help="Minecraft version, repeatable (default 1.26.62.1)")
     c.add_argument("--author")
+    b = sub.add_parser("build"); b.add_argument("jar", type=Path); b.add_argument("-o", "--out", type=Path)
+    b.add_argument("--mc", action="append", help="Minecraft version, repeatable (default 1.26.62.1)")
+    b.add_argument("--author"); b.add_argument("--ndk", help="Android NDK path (default: $ANDROID_NDK_HOME)")
+    b.add_argument("--workdir", type=Path, help="keep workspace + build files here (default: temp dir)")
     p = sub.add_parser("pack"); p.add_argument("--workspace", type=Path, required=True)
-    p.add_argument("--so", type=Path, required=True); p.add_argument("--abi", default="arm64-v8a")
+    p.add_argument("--so", type=Path, required=True); p.add_argument("--abi", default=ABI)
     p.add_argument("-o", "--out", type=Path)
     args = ap.parse_args(argv)
     try:
@@ -370,12 +419,13 @@ def main(argv=None):
             ws, nc, na, (t, u) = convert(args.jar, args.out, args.mc, args.author)
             print(f"workspace: {args.out}  ({nc} classes, {na} assets)")
             print(f"auto-translated to C++: {t} method(s); need manual rewrite: {u}")
-            print(f"next: cmake -S . -B build -DCRATE_WORKSPACE={args.out.resolve()} <android toolchain args>")
-            print("      cmake --build build --target levi_package   (see README)")
+            print(f"next: python3 tools/levicrate.py build {args.jar} --ndk $ANDROID_NDK_HOME   (or see README for the manual cmake steps)")
             print(f"read {args.out / 'PORTING.md'} - it lists what was translated and what still needs a hand-written hook")
+        elif args.cmd == "build":
+            print(f"levipack: {build(args.jar, args.out, args.mc, args.author, args.ndk, args.workdir)}")
         else:
             print(pack(args.workspace, args.so, args.abi, args.out))
-    except (CrateError, OSError, zipfile.BadZipFile, KeyError) as e:
+    except (CrateError, OSError, zipfile.BadZipFile, KeyError, subprocess.SubprocessError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     return 0
