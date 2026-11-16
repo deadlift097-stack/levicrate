@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 project(levicrate LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -13,7 +13,7 @@ set(MOD_NAME "Levicrate Demo" CACHE STRING "Display name")
 set(MOD_AUTHOR "you" CACHE STRING "Author")
 set(MOD_VERSION "0.1.0" CACHE STRING "Version")
 set(MOD_LIBRARY_NAME "levicrate_demo" CACHE STRING "Library name without lib prefix / .so suffix")
-set(MOD_MINECRAFT_VERSIONS "[\"1.21.62.*\"]" CACHE STRING "Raw JSON array for minecraft_versions")
+set(MOD_MINECRAFT_VERSIONS "[\"1.21.*\"]" CACHE STRING "Raw JSON array for minecraft_versions")
 set(MOD_ICON "" CACHE STRING "Package-relative icon path (relative to the workspace)")
 set(CRATE_ASSETS_DIR "" CACHE PATH "Assets directory to include in the package")
 
@@ -134,4 +134,3 @@ add_custom_target(levi_package
   DEPENDS ${MOD_LIBRARY_NAME}
   COMMENT "Packaging ${MOD_ID} -> ${PKG_FILE}"
   VERBATIM)
-  
