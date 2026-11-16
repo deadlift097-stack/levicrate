@@ -60,7 +60,7 @@ string(APPEND CMAKE_CXX_FLAGS " -include cstdlib")
 
 # Keep this tag in sync with the launcher you target. A mod built against a different SDK layout can
 # crash inside pl::modmenu::registerModule().
-set(CRATE_SDK_TAG "0.2.3" CACHE STRING "preloader-android release tag")
+set(CRATE_SDK_TAG "cc08b40a31471d3e2dedb267f5f17b28da2b0604" CACHE STRING "preloader-android git ref (commit/tag) - must match the SDK the launcher was built from")
 include(FetchContent)
 FetchContent_Declare(preloader_android
   GIT_REPOSITORY https://github.com/LiteLDev/preloader-android.git

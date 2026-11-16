@@ -50,7 +50,7 @@ Already have a compiled library? `python3 tools/levicrate.py pack --workspace wo
 
 ## Mod menu
 `native/include/crate/Menu.hpp`: toggles, int/float sliders, action buttons, validation, clamping, JSON persistence
-(`config/menu.json`). Backends: `PreloaderBackend` (real `pl::modmenu`, SDK 0.2.3; in-game edits are read back and saved) with automatic fall-back to `LoggingBackend`.
+(`config/menu.json`). Backends: `PreloaderBackend` (real `pl::modmenu`, SDK `main` @ cc08b40; in-game edits are read back and saved) with automatic fall-back to `LoggingBackend`.
 
 ## Tests
 `python3 -m unittest discover -s tests` and `cmake -S . -B b && cmake --build b && ctest --test-dir b`.
