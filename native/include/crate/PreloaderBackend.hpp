@@ -1,10 +1,10 @@
 // In-game Mod Menu backend. Only compiled when LEVICRATE_PL_MENU=1 (Android build).
 // Written against the public docs of the Mod Menu API:
 //   https://levimc.org/LeviLamina/developer_guides/android/api/mod_menu/
-// Calls marked [DOC] are copied from documented examples; [ASSUMED] are not shown in the docs
-// (see native/README.md - each has a one-line fix if the SDK differs).
+// Checked against preloader-android 0.2.3 (include/pl/ModMenu.hpp).
 #pragma once
 #include <pl/ModMenu.hpp>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -14,24 +14,31 @@ namespace levicrate {
 
 class PreloaderBackend : public MenuBackend {
 public:
-    explicit PreloaderBackend(std::string modId) : mModId(std::move(modId)) {}
+    // onChanged: called after the player edits a config value or toggles the module (use it to save).
+    explicit PreloaderBackend(std::string modId, std::function<void()> onChanged = {})
+        : mModId(std::move(modId)), mOnChanged(std::move(onChanged)) {}
     const char* name() const override { return "pl::modmenu"; }
 
     bool publish(Menu& menu) override {
         using namespace pl::modmenu;
         Menu* m = &menu;
 
-        auto builder = ModuleBuilder(menu.id(), menu.title())              // [DOC]
-                           .modId(mModId)                                  // [DOC]
-                           .description(menu.description())                // [DOC]
-                           .defaultEnabled(menu.enabled())                 // [DOC]
-                           .onToggle([m](std::string_view, bool on) {      // [DOC] signature (string_view, bool)
+        auto builder = ModuleBuilder(menu.id(), menu.title())
+                           .modId(mModId)
+                           .description(menu.description())
+                           .defaultEnabled(menu.enabled())
+                           .onToggle([this, m](std::string_view, bool on) {
                                m->setEnabled(on);
+                               if (mOnChanged) mOnChanged();
+                           })
+                           .onConfigChanged([this, m](std::string_view, std::string_view key, std::string_view value) {
+                               m->setFromString(std::string(key), std::string(value));   // in-game edits are read back
+                               if (mOnChanged) mOnChanged();
                            });
 
         for (const Entry& e : menu.entries()) {
             switch (e.kind) {
-            case EntryKind::Toggle:                                         // [DOC] config(key,label,type,default,min,max)
+            case EntryKind::Toggle:
                 builder.config(e.id, e.label, ConfigType::Toggle, e.value != 0 ? "true" : "false", "0", "1");
                 break;
             case EntryKind::SliderInt:
@@ -45,21 +52,21 @@ public:
             case EntryKind::Action: break;                                  // actions become floating buttons below
             }
         }
-        if (!builder.registerModule()) return false;                        // [DOC] returns bool
+        if (!builder.registerModule()) return false;
 
         for (const Entry& e : menu.entries()) {
             if (e.kind != EntryKind::Action) continue;
             const std::string buttonId = menu.id() + "." + e.id;
-            bool ok = ButtonBuilder(buttonId, e.label)                      // [DOC]
-                          .modId(mModId)                                    // [DOC]
-                          .moduleId(menu.id())                              // [DOC]
-                          .label(e.label)                                   // [DOC]
-                          .androidKeyCode(0)                                // [DOC]
-                          .behavior(ButtonBehavior::Click)                  // [DOC]
-                          .onEvent([m, id = e.id](std::string_view, ButtonEvent, float) {  // [DOC] signature
-                              m->trigger(id);                               // [ASSUMED] Click behavior only reports clicks
+            bool ok = ButtonBuilder(buttonId, e.label)
+                          .modId(mModId)
+                          .moduleId(menu.id())
+                          .label(e.label)
+                          .androidKeyCode(0)
+                          .behavior(ButtonBehavior::Click)
+                          .onEvent([m, id = e.id](std::string_view, ButtonEvent ev, float) {
+                              if (ev == ButtonEvent::Click) m->trigger(id);
                           })
-                          .registerButton();                                // [DOC]
+                          .registerButton();
             if (ok) mButtons.push_back(buttonId);
         }
         mModules.push_back(menu.id());
@@ -67,14 +74,15 @@ public:
     }
 
     void withdraw(Menu&) override {
-        for (auto& b : mButtons) pl::modmenu::unregisterButton(b);          // [ASSUMED] takes the id string
-        for (auto& m : mModules) pl::modmenu::unregisterModule(m);          // [ASSUMED] takes the id string
+        for (auto& b : mButtons) pl::modmenu::unregisterButton(b);        
+        for (auto& m : mModules) pl::modmenu::unregisterModule(m);        
         mButtons.clear();
         mModules.clear();
     }
 
 private:
     std::string mModId;
+    std::function<void()> mOnChanged;
     std::vector<std::string> mModules, mButtons;
 };
 

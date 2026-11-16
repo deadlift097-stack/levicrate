@@ -1,4 +1,4 @@
-// levicrate core menu model. Pure C++17, no SDK dependency, unit-tested on the host.
+// levicrate core menu model. Plain C++17-compatible, no SDK dependency, unit-tested on the host.
 #pragma once
 #include <algorithm>
 #include <cctype>
@@ -79,6 +79,21 @@ public:
         e->value = nv;
         if (changed && e->onChange) e->onChange(*e);
         return true;
+    }
+
+    // Same as set(), for values that arrive as text (the Mod Menu reports config changes as strings:
+    // "true"/"false" or a number). False if the text is not a valid value or the entry is unknown.
+    bool setFromString(const std::string& id, const std::string& text) {
+        double v;
+        if (text == "true") v = 1;
+        else if (text == "false") v = 0;
+        else {
+            if (text.empty()) return false;
+            char* endp = nullptr;
+            v = std::strtod(text.c_str(), &endp);
+            if (*endp != '\0' || std::isinf(v)) return false;
+        }
+        return set(id, v);
     }
 
     bool trigger(const std::string& id) {
