@@ -32,7 +32,7 @@ public:
 
         auto builder = ModuleBuilder(menu.id(), menu.title())
                            .modId(mModId)
-                           .description(menu.description())
+                           .description(cardDescription(menu))
                            .defaultEnabled(menu.enabled())
                            .onToggle([this, m](std::string_view, bool on) {
                                m->setEnabled(on);
@@ -88,6 +88,13 @@ public:
     }
 
 private:
+    // Card text: "[Heavy] All, Touch - description"
+    static std::string cardDescription(const Menu& m) {
+        std::string d = "[" + m.category() + "]";
+        for (size_t i = 0; i < m.tags().size(); ++i) d += (i ? ", " : " ") + m.tags()[i];
+        if (!m.description().empty()) d += " - " + m.description();
+        return d;
+    }
     std::string mModId;
     std::function<void()> mOnChanged;
     std::vector<std::string> mModules, mButtons;

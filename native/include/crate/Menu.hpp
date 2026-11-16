@@ -46,6 +46,12 @@ public:
     const std::string& description() const { return mDescription; }
     Menu& description(std::string d) { mDescription = std::move(d); return *this; }
 
+    // Card grouping in the hub ("Heavy", "Light", "Ported", ...) and display tags ("All", "Touch", ...).
+    const std::string& category() const { return mCategory; }
+    Menu& category(std::string c) { mCategory = std::move(c); return *this; }
+    const std::vector<std::string>& tags() const { return mTags; }
+    Menu& tag(std::string t) { mTags.push_back(std::move(t)); return *this; }
+
     bool enabled() const { return mEnabled; }
     void setEnabled(bool e) { mEnabled = e; }
 
@@ -204,7 +210,8 @@ private:
         return nullptr;
     }
 
-    std::string mId, mTitle, mDescription;
+    std::string mId, mTitle, mDescription, mCategory = "Light";
+    std::vector<std::string> mTags;
     bool mEnabled = true;
     std::vector<Entry> mEntries;
     std::vector<std::string> mErrors;
