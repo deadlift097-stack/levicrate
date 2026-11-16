@@ -1,0 +1,27 @@
+name: build
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s tests -v
+      - run: cmake -S . -B build-host && cmake --build build-host && ctest --test-dir build-host --output-on-failure
+  android:
+    needs: host-tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S . -B build-${{ matrix.abi }} -G Ninja
+          -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake"
+          -DANDROID_ABI=${{ matrix.abi }} -DANDROID_PLATFORM=android-28 -DANDROID_STL=c++_shared
+      - run: cmake --build build-${{ matrix.abi }} --target levi_package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: levipack-${{ matrix.abi }}
+          path: build-${{ matrix.abi }}/*.levipack
