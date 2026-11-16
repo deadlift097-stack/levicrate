@@ -1,0 +1,50 @@
+name: convert
+# Java mod (.jar) -> .levipack, built in CI so no local NDK is needed.
+#  * push a jar to mods/            -> every mods/*.jar is converted
+#  * Actions > convert > Run workflow -> give a jar path in the repo, or a direct download URL
+on:
+  push:
+    paths: ["mods/*.jar"]
+  workflow_dispatch:
+    inputs:
+      jar_path:
+        description: "Path of a .jar inside the repo (e.g. mods/MyMod.jar)"
+        required: false
+      jar_url:
+        description: "...or a direct download URL of a .jar"
+        required: false
+      minecraft_version:
+        description: "Minecraft version written to the manifest"
+        default: "1.26.62.1"
+env:
+  NDK_VERSION: 28.2.13676358
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+      - name: Convert and package
+        env:
+          IN_PATH: ${{ github.event.inputs.jar_path }}
+          IN_URL: ${{ github.event.inputs.jar_url }}
+          IN_MC: ${{ github.event.inputs.minecraft_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          jars=()
+          if [ -n "${IN_URL:-}" ]; then curl -fsSL "$IN_URL" -o downloaded.jar; jars+=(downloaded.jar)
+          elif [ -n "${IN_PATH:-}" ]; then jars+=("$IN_PATH")
+          else jars+=(mods/*.jar); fi
+          for jar in "${jars[@]}"; do
+            name="$(basename "$jar" .jar)"
+            python3 tools/levicrate.py build "$jar" --mc "${IN_MC:-1.26.62.1}" -o "out/$name.levipack" --workdir "work-$name"
+          done
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: levipacks
+          path: out/*
