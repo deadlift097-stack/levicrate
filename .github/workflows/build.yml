@@ -20,7 +20,7 @@ jobs:
           cmake -S . -B build-${{ matrix.abi }} -G Ninja
           -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake"
           -DANDROID_ABI=${{ matrix.abi }} -DANDROID_PLATFORM=android-28 -DANDROID_STL=c++_shared
-          -DCMAKE_CXX_FLAGS="-include stdlib.h"
+          -DCMAKE_CXX_FLAGS="-include stdlib.h -std=c++20"
       - run: cmake --build build-${{ matrix.abi }} --target levi_package
       - uses: actions/upload-artifact@v4
         with:
