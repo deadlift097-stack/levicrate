@@ -20,8 +20,7 @@ CrateMod& CrateMod::instance() {
 // ll::mod::NativeMod::current() is valid while the instance is being registered (SDK docs / template README).
 CrateMod::CrateMod() : mSelf(*ll::mod::NativeMod::current()), mMenu("levicrate.main", "Crate Menu") {}
 
-// Single place that touches the logger. [ASSUMED] fmt-style debug(fmt, args...); the template README
-// only shows debug("literal"). If your SDK logger takes a plain string, change this one line.
+// Single place that touches the logger (pl::log::Logger::debug takes a fmt-style format string).
 void CrateMod::logLine(const std::string& line) { getSelf().getLogger().debug("{}", line); }
 
 void CrateMod::buildMenu() {
@@ -39,7 +38,6 @@ void CrateMod::buildMenu() {
     for (auto& err : mMenu.errors()) logLine("menu error: " + err);
 }
 
-// [ASSUMED] getConfigDir() converts to std::filesystem::path (std::string or path both work).
 std::string CrateMod::savePath() const {
     std::filesystem::path dir(getSelf().getConfigDir());
     std::error_code ec;
@@ -68,7 +66,7 @@ bool CrateMod::load() {
 
 bool CrateMod::enable() {
 #if LEVICRATE_PL_MENU
-    mBackend = std::make_unique<levicrate::PreloaderBackend>(getSelf().getId());
+    mBackend = std::make_unique<levicrate::PreloaderBackend>(getSelf().getId(), [this] { save(); });
     if (mBackend->publish(mMenu)) {
         logLine("menu published through pl::modmenu");
         return true;
