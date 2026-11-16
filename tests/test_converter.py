@@ -86,6 +86,24 @@ class T(unittest.TestCase):
         self.assertEqual(man["minecraft_versions"], ["1.21.*", "1.22.*"])
         self.assertEqual(pk.read_bytes(), lc.pack(out, so, out=self.tmp / "again.levipack").read_bytes())  # reproducible
 
+    def test_default_minecraft_version_and_arm64_only(self):
+        ws, *_ = lc.convert(self.jar(), self.tmp / "ws2")
+        self.assertEqual(ws["minecraft_versions"], ["1.26.62.1"])
+        self.assertEqual(lc.build_manifest(ws)["minecraft_versions"], ["1.26.62.1"])
+        root = Path(lc.__file__).resolve().parents[1]
+        for f in ("CMakeLists.txt", ".github/workflows/build.yml", ".github/workflows/convert.yml"):
+            code = "\n".join(l.split("#")[0] for l in (root / f).read_text().splitlines())  # comments may mention it
+            self.assertNotIn("armeabi", code, f)
+        self.assertEqual(lc.ABI, "arm64-v8a")
+
+    def test_build_without_ndk_is_a_clean_error(self):
+        import os
+        old = {k: os.environ.pop(k, None) for k in ("ANDROID_NDK_HOME", "ANDROID_NDK_ROOT", "ANDROID_NDK")}
+        try:
+            self.assertEqual(lc.main(["build", str(self.jar()), "-o", str(self.tmp / "x.levipack")]), 1)
+        finally:
+            os.environ.update({k: v for k, v in old.items() if v})
+
     def test_cli_errors(self):
         self.assertEqual(lc.main(["pack", "--workspace", str(self.tmp), "--so", "missing.so"]), 1)
         bad = self.tmp / "notzip.jar"; bad.write_bytes(b"x")

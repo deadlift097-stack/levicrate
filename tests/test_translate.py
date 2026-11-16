@@ -26,7 +26,7 @@ class TranslateEndToEnd(unittest.TestCase):
 
     def test_output_identical_to_jvm(self):
         exe = self.tmp / "h"
-        subprocess.run(["g++", "-std=c++17", "-O1", "-Wno-unused-label", "-Wno-unused-variable", "-I", str(ROOT / "native/include"),
+        subprocess.run(["g++", "-std=c++20", "-O1", "-Wno-unused-label", "-Wno-unused-variable", "-I", str(ROOT / "native/include"),
                         "-I", str(self.tmp), str(ROOT / "tests/java/harness.cpp"), str(self.tmp / "Translated.cpp"), "-o", str(exe)], check=True)
         got = subprocess.run([str(exe)], capture_output=True, text=True, check=True).stdout
         self.assertGreater(len(self.expected.splitlines()), 90)
