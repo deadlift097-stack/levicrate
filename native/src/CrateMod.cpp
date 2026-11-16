@@ -18,44 +18,75 @@ CrateMod& CrateMod::instance() {
 }
 
 // ll::mod::NativeMod::current() is valid while the instance is being registered (SDK docs / template README).
-CrateMod::CrateMod() : mSelf(*ll::mod::NativeMod::current()), mMenu("levicrate.main", "Crate Menu") {}
+CrateMod::CrateMod() : mSelf(*ll::mod::NativeMod::current()) {}
 
 // Single place that touches the logger (pl::log::Logger::debug takes a fmt-style format string).
 void CrateMod::logLine(const std::string& line) { getSelf().getLogger().debug("{}", line); }
 
+// Cards: "Heavy" / "Light" / "Ported" / "Hub". Each card = one Mod Menu module with its own Enabled switch + settings.
 void CrateMod::buildMenu() {
-    mMenu.description("Menu container managed by levicrate");
-    mMenu.toggle("showHud", "Show HUD", true);
-    mMenu.sliderInt("hudOpacity", "HUD opacity", 80, 0, 100);
-    mMenu.sliderFloat("speed", "Speed multiplier", 1.0, 0.5, 4.0);
-    mMenu.action("reset", "Reset settings", [this](const levicrate::Entry&) {
-        mMenu.reset();
-        save();
-    });
+    auto& hud = mHub.add("levicrate.hud", "HUD", "Light");
+    hud.tag("All").description("Basic HUD options");
+    hud.toggle("showHud", "Show HUD", true);
+    hud.sliderInt("hudOpacity", "HUD opacity", 80, 0, 100);
+
+    auto& speed = mHub.add("levicrate.speed", "Speed Multiplier", "Heavy");
+    speed.tag("All").description("Uses a lot of resources; disable if the game lags");
+    speed.sliderFloat("speed", "Speed multiplier", 1.0, 0.5, 4.0);
+
 #if LEVICRATE_HAS_PORT
-    buildPortedMenu(mMenu);
+    auto& port = mHub.add("levicrate.port", "Ported mod", "Ported");
+    port.tag("Converted").description("Methods translated from the Java mod");
+    buildPortedMenu(port);
 #endif
-    for (auto& err : mMenu.errors()) logLine("menu error: " + err);
+
+    auto& ctl = mHub.add("levicrate.hub", "Hub Controls", "Hub");
+    ctl.tag("All").description("Reset, bulk enable/disable, config dump");
+    ctl.action("resetAll", "Reset all settings", [this](const levicrate::Entry&) { mHub.resetAll(); save(); });
+    ctl.action("disableHeavy", "Disable Heavy mods", [this](const levicrate::Entry&) {
+        mHub.setCategoryEnabled("Heavy", false); save();
+    });
+    ctl.action("enableAll", "Enable all mods", [this](const levicrate::Entry&) { mHub.setAllEnabled(true); save(); });
+    ctl.action("dumpConfig", "Dump config + compatibility", [this](const levicrate::Entry&) { dumpConfig(); });
+
+    for (auto& issue : mHub.compatibility()) logLine("compatibility: " + issue);
 }
 
-std::string CrateMod::savePath() const {
+std::string CrateMod::configDir() const {
     std::filesystem::path dir(getSelf().getConfigDir());
     std::error_code ec;
-    std::filesystem::create_directories(dir, ec);
-    return (dir / "menu.json").string();
+    std::filesystem::create_directories(dir / "menus", ec);
+    return dir.string();
+}
+
+// Writes config/config_dump.txt (shareable, Better-Bedrock-style "Config" tab) and logs the compatibility report.
+void CrateMod::dumpConfig() {
+    std::ofstream out(std::filesystem::path(configDir()) / "config_dump.txt", std::ios::trunc);
+    if (out) {
+        out << mHub.configText();
+        auto issues = mHub.compatibility();
+        out << "\n[Compatibility]\n";
+        if (issues.empty()) out << "no issues\n";
+        for (auto& i : issues) out << "- " << i << "\n";
+    }
+    logLine("config dumped to config_dump.txt");
 }
 
 void CrateMod::loadSaved() {
-    std::ifstream in(savePath());
-    if (!in) return;
-    std::stringstream ss;
-    ss << in.rdbuf();
-    if (!mMenu.loadJson(ss.str())) logLine("menu.json is malformed; using defaults");
+    for (auto& m : mHub.menus()) {
+        std::ifstream in(std::filesystem::path(configDir()) / "menus" / (m.id() + ".json"));
+        if (!in) continue;
+        std::stringstream ss;
+        ss << in.rdbuf();
+        if (!m.loadJson(ss.str())) logLine(m.id() + ".json is malformed; using defaults");
+    }
 }
 
 void CrateMod::save() {
-    std::ofstream out(savePath(), std::ios::trunc);
-    if (out) out << mMenu.toJson();
+    for (auto& m : mHub.menus()) {
+        std::ofstream out(std::filesystem::path(configDir()) / "menus" / (m.id() + ".json"), std::ios::trunc);
+        if (out) out << m.toJson();
+    }
 }
 
 bool CrateMod::load() {
@@ -65,21 +96,27 @@ bool CrateMod::load() {
 }
 
 bool CrateMod::enable() {
+    bool ok = false;
 #if LEVICRATE_PL_MENU
-    mBackend = std::make_unique<levicrate::PreloaderBackend>(getSelf().getId(), [this] { save(); });
-    if (mBackend->publish(mMenu)) {
-        logLine("menu published through pl::modmenu");
+    auto pl = std::make_unique<levicrate::PreloaderBackend>(getSelf().getId(), [this] { save(); });
+    ok = true;
+    for (auto& m : mHub.menus()) ok = pl->publish(m) && ok;   // one card per menu
+    if (ok) {
+        mBackend = std::move(pl);
+        logLine("hub published through pl::modmenu");
         return true;
     }
-    logLine("pl::modmenu refused the module; falling back to logging");
+    pl->withdraw(mHub.menus().front());
+    logLine("pl::modmenu refused a card; falling back to logging");
 #endif
+    (void)ok;
     mBackend = std::make_unique<levicrate::LoggingBackend>([this](const std::string& s) { logLine(s); });
-    mBackend->publish(mMenu);
+    for (auto& m : mHub.menus()) mBackend->publish(m);
     return true;  // a missing menu must never block the game from starting
 }
 
 bool CrateMod::disable() {
-    if (mBackend) mBackend->withdraw(mMenu);
+    if (mBackend && !mHub.menus().empty()) mBackend->withdraw(mHub.menus().front());
     mBackend.reset();
     save();
     return true;
