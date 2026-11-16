@@ -1,7 +1,8 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.28)
 project(levicrate LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+# The preloader SDK headers need C++20 (<span>, concepts, designated initialisers).
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -13,7 +14,7 @@ set(MOD_NAME "Levicrate Demo" CACHE STRING "Display name")
 set(MOD_AUTHOR "you" CACHE STRING "Author")
 set(MOD_VERSION "0.1.0" CACHE STRING "Version")
 set(MOD_LIBRARY_NAME "levicrate_demo" CACHE STRING "Library name without lib prefix / .so suffix")
-set(MOD_MINECRAFT_VERSIONS "[\"1.21.*\"]" CACHE STRING "Raw JSON array for minecraft_versions")
+set(MOD_MINECRAFT_VERSIONS "[\"1.26.62.1\"]" CACHE STRING "Raw JSON array for minecraft_versions")
 set(MOD_ICON "" CACHE STRING "Package-relative icon path (relative to the workspace)")
 set(CRATE_ASSETS_DIR "" CACHE PATH "Assets directory to include in the package")
 
@@ -47,26 +48,29 @@ if(NOT ANDROID)
 endif()
 
 # ---- Android build ------------------------------------------------------------------------------
-if(NOT CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a" AND NOT CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
-  message(FATAL_ERROR "Unsupported Android ABI: ${CMAKE_ANDROID_ARCH_ABI}")
+# LeviLauncher only runs on 64-bit ARM, so arm64-v8a is the only supported ABI (armeabi-v7a was dropped).
+if(NOT CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+  message(FATAL_ERROR "Unsupported Android ABI '${CMAKE_ANDROID_ARCH_ABI}': only arm64-v8a is supported")
 endif()
 
-# Same SDK release the LeviLauncher template pins. A mod built against a different SDK layout can
-# crash inside pl::modmenu::registerModule(), so keep this tag in sync with the launcher you target.
-set(CRATE_SDK_TAG "0.2.2" CACHE STRING "preloader-android release tag")
+# Newer NDK libc++ releases (r30+) no longer include <cstdlib> transitively, which breaks fmt 11.2.0
+# (fetched by the preloader SDK: "use of undeclared identifier 'malloc'/'free'"). Forcing the include for
+# every C++ file is harmless on older NDKs and makes the build independent of the NDK version.
+string(APPEND CMAKE_CXX_FLAGS " -include cstdlib")
+
+# Keep this tag in sync with the launcher you target. A mod built against a different SDK layout can
+# crash inside pl::modmenu::registerModule().
+set(CRATE_SDK_TAG "0.2.3" CACHE STRING "preloader-android release tag")
 include(FetchContent)
 FetchContent_Declare(preloader_android
   GIT_REPOSITORY https://github.com/LiteLDev/preloader-android.git
   GIT_TAG ${CRATE_SDK_TAG}
-  SOURCE_SUBDIR cmake/preloader-sdk)
-FetchContent_MakeAvailable(preloader_android)
+  EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(preloader_android)   # defines the `preloader` target (SDK root CMakeLists.txt)
 set(CRATE_SDK_INCLUDE "${preloader_android_SOURCE_DIR}/include")
 
 option(CRATE_PL_MENU "Use the real pl::modmenu backend (OFF = log-only fallback)" ON)
 option(CRATE_LINK_PRELOADER "Link the preloader target instead of leaving SDK symbols for runtime lookup" ON)
-if(CRATE_LINK_PRELOADER AND NOT TARGET preloader)
-  add_subdirectory("${preloader_android_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/_preloader_android")
-endif()
 
 set(CRATE_SOURCES native/src/main.cpp native/src/CrateMod.cpp)
 if(NOT CRATE_WORKSPACE STREQUAL "" AND EXISTS "${CRATE_WORKSPACE}/src/ModPort.cpp")
@@ -91,7 +95,7 @@ target_link_options(${MOD_LIBRARY_NAME} PRIVATE "-Wl,-z,max-page-size=16384")
 
 find_library(log-lib log REQUIRED)
 target_link_libraries(${MOD_LIBRARY_NAME} PRIVATE ${log-lib})
-if(TARGET preloader)
+if(CRATE_LINK_PRELOADER AND TARGET preloader)
   target_link_libraries(${MOD_LIBRARY_NAME} PRIVATE preloader)
 else()
   target_link_options(${MOD_LIBRARY_NAME} PRIVATE "-Wl,--unresolved-symbols=ignore-all")
