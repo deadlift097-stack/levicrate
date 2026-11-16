@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "crate/Backend.hpp"
+#include "crate/Hub.hpp"
 #include "crate/Menu.hpp"
 
 static int failures = 0;
@@ -70,6 +71,32 @@ int main() {
     CHECK(lines[1].find("HUD [toggle] = on") != std::string::npos);
     lb.withdraw(m);
     CHECK(lines.back().find("withdrawn") != std::string::npos);
+
+    // ---- Hub ----
+    Hub hub;
+    hub.add("armor", "Armor HUD", "Heavy").tag("All").toggle("big", "Big", false);
+    hub.add("inv", "Inventory HUD", "Light").tag("Touch").sliderInt("x", "X", 50, 0, 100);
+    hub.add("cps", "CPS Counter", "Heavy");
+    CHECK(hub.menus().size() == 3);
+    CHECK(hub.categories() == (std::vector<std::string>{"Heavy", "Light"}));
+    CHECK(hub.inCategory("Heavy").size() == 2);
+    CHECK(hub.search("touch").size() == 1);
+    CHECK(hub.search("HUD").size() == 2);
+    CHECK(hub.search("").size() == 3);
+    Menu* inv = hub.find("inv");
+    CHECK(inv != nullptr); inv->set("x", 80);
+    hub.setCategoryEnabled("Heavy", false);
+    CHECK(!hub.find("armor")->enabled()); CHECK(!hub.find("cps")->enabled()); CHECK(hub.find("inv")->enabled());
+    std::string cfg = hub.configText();
+    CHECK(cfg.find("[Heavy]") != std::string::npos);
+    CHECK(cfg.find("$armor false") != std::string::npos);
+    CHECK(cfg.find("  $inv_x 80") != std::string::npos);
+    CHECK(hub.compatibility().empty());
+    hub.add("armor", "dup", "Light");
+    hub.find("inv")->toggle("bad id", "x", false);
+    CHECK(hub.compatibility().size() == 2);
+    hub.resetAll();
+    CHECK(hub.find("armor")->enabled()); CHECK(hub.find("inv")->find("x")->value == 50);
 
     if (failures == 0) std::printf("menu_test: all checks passed\n");
     return failures ? 1 : 0;
