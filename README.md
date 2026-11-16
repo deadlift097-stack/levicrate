@@ -48,9 +48,13 @@ preloader SDK's fmt dependency (`undeclared identifier 'malloc'`); CMake now for
 SDK requires C++20.
 Already have a compiled library? `python3 tools/levicrate.py pack --workspace workspace --so libmymod.so`.
 
-## Mod menu
-`native/include/crate/Menu.hpp`: toggles, int/float sliders, action buttons, validation, clamping, JSON persistence
-(`config/menu.json`). Backends: `PreloaderBackend` (real `pl::modmenu`, SDK `main` @ cc08b40; in-game edits are read back and saved) with automatic fall-back to `LoggingBackend`.
+## Mod menu (hub)
+`native/include/crate/Hub.hpp` + `Menu.hpp`: a Better-Bedrock-style **hub**. Every mod is a **card** (one `pl::modmenu` module) with its own
+Enabled/Disabled switch, tags (`All`, `Touch`, ...) and settings (toggles, int/float sliders), grouped as **Heavy / Light / Ported / Hub**.
+- **Hub Controls** card: Reset all, Disable Heavy mods, Enable all, **Dump config + compatibility** (-> `config/config_dump.txt`, `$mod true` / `  $mod_key 40` lines you can share).
+- Hub-side: category filter, search, compatibility report (duplicate ids, invalid entries), per-card persistence in `config/menus/<id>.json`.
+- Backends: `PreloaderBackend` (real `pl::modmenu`, SDK `main` @ cc08b40) with automatic fall-back to `LoggingBackend`.
+- Limit: the Mods/Editor/Settings/Information *tab chrome* in the screenshots is a resource-pack UI; a native mod can only fill the launcher's Mod Menu with cards.
 
 ## Tests
 `python3 -m unittest discover -s tests` and `cmake -S . -B b && cmake --build b && ctest --test-dir b`.
