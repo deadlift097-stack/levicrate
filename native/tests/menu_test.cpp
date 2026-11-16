@@ -35,6 +35,13 @@ int main() {
     CHECK(m.set("hud", 0));   CHECK(fired == 1);
     CHECK(!m.set("nope", 1)); CHECK(!m.set("go", 1)); CHECK(!m.set("op", std::nan("")));
 
+    CHECK(m.setFromString("op", "63"));   CHECK(m.find("op")->value == 63);
+    CHECK(m.setFromString("sp", "2.5"));  CHECK(m.find("sp")->value == 2.5);
+    CHECK(m.setFromString("hud", "true")); CHECK(m.find("hud")->value == 1);
+    CHECK(m.setFromString("hud", "false")); CHECK(m.find("hud")->value == 0);
+    CHECK(!m.setFromString("op", "abc")); CHECK(!m.setFromString("op", "")); CHECK(!m.setFromString("zzz", "1"));
+    CHECK(m.find("op")->value == 63);
+    m.set("hud", 0); fired = 1;  // restore state the checks below expect
     CHECK(m.trigger("go")); CHECK(actions == 1);
     CHECK(!m.trigger("hud")); CHECK(!m.trigger("missing"));
 
