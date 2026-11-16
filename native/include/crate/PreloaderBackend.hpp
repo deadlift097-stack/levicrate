@@ -10,6 +10,13 @@
 #include <vector>
 #include "crate/Backend.hpp"
 
+// The launcher's libpreloader.so reads ModuleInfo *by value layout*. SDK tag 0.2.3 ModuleInfo has no `onKeybind`
+// (224 bytes); the launcher runtime built from SDK `main` reads it (272 bytes) and crashes with SIGSEGV inside
+// pl::modmenu::registerModule when the mod was compiled against the older, shorter struct. Refuse to build that.
+static_assert(requires(pl::modmenu::ModuleInfo i) { i.onKeybind; },
+              "preloader SDK too old: ModuleInfo has no onKeybind. Build with CRATE_SDK_TAG set to the SDK commit your "
+              "launcher uses (default in CMakeLists.txt), otherwise the mod crashes in registerModule().");
+
 namespace levicrate {
 
 class PreloaderBackend : public MenuBackend {
